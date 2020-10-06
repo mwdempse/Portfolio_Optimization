@@ -1,6 +1,6 @@
 ---
 title: "Investment Game"
-author: "Yanni Dalkos, Matthew Dempsey, Harrison McKenny"
+author: "Matthew Dempsey"
 date: "May 11, 2018"
 output: html_document
 ---
