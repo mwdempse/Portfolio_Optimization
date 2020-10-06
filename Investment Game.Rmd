@@ -1,0 +1,101 @@
+---
+title: "Investment Game"
+author: "Matthew Dempsey"
+date: "May 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Packages Used
+library(MASS)
+library(nloptr)
+library(RiskPortfolios)
+#Historical Returns and Correlations
+MoReturns <- read.csv("MonthlyNetReturns.csv")
+Sigma <- read.csv("CorrCamp.csv")
+```
+
+## Using Historical Data and Correlations to compare Bayesian and EWMA portfolio optimations
+
+```{r}
+mus <- MoReturns$Mean
+sig <- as.matrix(Sigma[,2:9])
+# create the VCV matrix from standard deviations and correlations of assets
+b <- MoReturns$Std_Dev %*% t(MoReturns$Std_Dev)
+ogvcv <- b * sig
+BayesWins <- numeric()
+EWMAWins <- numeric()
+Bay_Returns <- numeric()
+Res_Returns <- numeric()
+MeanBay_Rt <- numeric()
+MeanRes_Rt <- numeric()
+Results <- data.frame()
+for (z in 1:10){
+# Generate 216 draws from OG params  THIS IS DONE 10 TIMES over (10 TRUTHS)
+OGparams <- mvrnorm(216, MoReturns[,2], Sigma = ogvcv)
+mut1 <- numeric()
+for (i in 1:length(mus)){
+  mut1[i] <- mean(OGparams[,i])
+}
+vcv1 <- cov(OGparams)
+ScoreBayes <- 0
+ScoreRes <- 0
+for ( n in 1:100){
+  
+  # Generate 216 draws from the perturbed truths, this is our history, 100 histories
+  hist <- mvrnorm(216, mut1, vcv1)
+  muh <- numeric()
+  for (i in 1:length(mus)){
+    muh[i] <- mean(hist[,i])
+  }
+  vcvh <- cov(hist)
+  h217 <- mvrnorm(100,muh,vcvh)  # generate 100 more samples to draw the 217th returns from
+  # Calculate returns for the 217th period, from which the players will apply their weights to in order determine a winner
+  r217 <- numeric()
+  for (i in 1:length(mus)){
+    r217[i] <- mean(h217[,i])
+  }
+  # Now calculate optimal portfolios for given hist
+  a <- covEstimation(hist, control = list(type = "bs"))
+  b <- meanEstimation(hist, control = list(type = "bs"))
+  c <- semidevEstimation(hist, control = list(type = "naive"))
+  wb <- optimalPortfolio(a, b, c, control = list(type = 'minvol'))
+  
+  g <- covEstimation(hist, control = list(type = "ewma"))
+  d <- meanEstimation(hist, control = list(type = "ewma"))
+  e <- semidevEstimation(hist, control = list(type = "ewma"))
+  w <- optimalPortfolio(g, d, e, control = list(type = 'minvol'))
+  
+  # comp <- rbind(w,wb); comp
+  # meanestim <- rbind(b,d,muh); meanestim
+  
+  # Determine which wieghts will provide greatest 
+  Rbayes <- wb %*% r217
+  Rres <- w %*% r217
+  
+  # vector to record mean returns for each player
+  Bay_Returns[n] <- Rbayes
+  Res_Returns[n] <- Rres
+  
+  # cbind(Rbayes,Rres)
+  if (Rbayes > Rres){
+    ScoreBayes <- ScoreBayes + 1
+  }else{
+    ScoreRes <- ScoreRes + 1
+  }
+}
+MeanBay_Rt[z] <- mean(Bay_Returns)
+MeanRes_Rt[z] <- mean(Res_Returns)
+BayesWins[z] <- ScoreBayes
+EWMAWins[z] <- ScoreRes
+}
+Results <- data.frame(BayesWins,EWMAWins,MeanBay_Rt,MeanRes_Rt)
+Results
+```
+
+##Save results in separate file
+
+```{r}
+write.csv(Results, file = "InvestGameResults2.csv")
+```
